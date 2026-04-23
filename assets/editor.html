@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartLab Word</title>
+    <script src="tinymce/tinymce.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+        body { margin: 0; padding: 0; overflow: hidden; height: 100vh; background-color: #f0f2f5; transition: background-color 0.3s; font-family: 'Inter', sans-serif;}
+        #editor-wrapper { height: 100vh; display: flex; flex-direction: column; }
+        .tox-tinymce { border: none !important; }
+        .tox-editor-header { box-shadow: 0 2px 10px rgba(0,0,0,0.03) !important; padding-bottom: 5px !important; transition: opacity 0.2s;}
+
+        /* ТЕМНАЯ ТЕМА ДЛЯ ПАНЕЛЕЙ ИНСТРУМЕНТОВ */
+        body.dark-app { background-color: #18181b !important; }
+        body.dark-app .tox .tox-toolbar-overlord, body.dark-app .tox .tox-toolbar__primary, body.dark-app .tox .tox-toolbar__overflow,
+        body.dark-app .tox .tox-menubar, body.dark-app .tox .tox-statusbar { background-color: #252526 !important; border-color: #333 !important; color: #cccccc !important; }
+        body.dark-app .tox .tox-tbtn { color: #cccccc !important; }
+        body.dark-app .tox .tox-tbtn svg { fill: #cccccc !important; }
+        body.dark-app .tox .tox-tbtn:hover { background-color: #333333 !important; color: #fff !important; border-radius: 6px !important;}
+        body.dark-app .tox .tox-tbtn--enabled { background-color: #37373d !important; border-radius: 6px !important;}
+        body.dark-app .tox .tox-listbox, body.dark-app .tox .tox-selectfield select, body.dark-app .tox .tox-textfield,
+        body.dark-app .tox .tox-toolbar-textfield, body.dark-app .tox input { background-color: #333333 !important; color: #cccccc !important; border: 1px solid #444 !important; border-radius: 6px !important;}
+        body.dark-app .tox .tox-listbox:hover, body.dark-app .tox .tox-textfield:focus, body.dark-app .tox input:focus { background-color: #3c3c3c !important; border-color: #4daafc !important; }
+        body.dark-app .tox .tox-listbox svg { fill: #cccccc !important; }
+        body.dark-app .tox .tox-pop, body.dark-app .tox .tox-pop__dialog, body.dark-app .tox .tox-dialog,
+        body.dark-app .tox .tox-menu { background-color: #252526 !important; border: 1px solid #333 !important; color: #cccccc !important; box-shadow: 0 8px 16px rgba(0,0,0,0.3) !important; border-radius: 8px !important;}
+        body.dark-app .tox-pop::before, body.dark-app .tox-pop::after, body.dark-app .tox-pop__dialog::before, body.dark-app .tox-pop__dialog::after { border-bottom-color: #252526 !important; border-top-color: #252526 !important; }
+        body.dark-app .tox .tox-collection__item { color: #cccccc !important; border-radius: 6px !important;}
+        body.dark-app .tox .tox-collection__item--active, body.dark-app .tox .tox-collection__item:hover { background-color: #333333 !important; color: #fff !important; }
+        .tox .tox-tbtn:hover { background-color: #f0f0f0 !important; border-radius: 6px !important; }
+        .tox .tox-tbtn--enabled { background-color: #e4e6eb !important; border-radius: 6px !important; }
+        .tox .tox-pop, .tox .tox-menu { border-radius: 8px !important; box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;}
+        html.dark-mode, body.dark-mode { background-color: #18181b !important; }
+    </style>
+</head>
+<body>
+    <div id="editor-wrapper">
+        <textarea id="editor" aria-label="Текстовый редактор">
+            <h1 style="text-align: center;">Добро пожаловать в SmartLab</h1>
+            <p style="text-align: center;">Создайте новую работу вручную или воспользуйтесь AI Консолью для автоматической генерации структуры.</p>
+        </textarea>
+    </div>
+
+    <script>
+        window.showEditorToolbar = function(show) {
+            let header = document.querySelector('.tox-editor-header');
+            if (header) { header.style.display = show ? 'block' : 'none'; }
+        };
+
+        window.toggleDarkMode = function(isDark) {
+            if(isDark){ document.body.classList.add('dark-app'); } 
+            else { document.body.classList.remove('dark-app'); }
+            const editor = tinymce.activeEditor;
+            if(editor){
+                const body = editor.getBody(); const html = editor.getDoc().documentElement;
+                if(isDark){ editor.dom.addClass(body,'dark-mode'); editor.dom.addClass(html,'dark-mode');
+                } else { editor.dom.removeClass(body,'dark-mode'); editor.dom.removeClass(html,'dark-mode'); }
+            }
+        };
+
+        window.setEditorContent = function(htmlData) {
+            if(tinymce.activeEditor) tinymce.activeEditor.setContent(htmlData);
+        };
+
+        function refreshMath() {
+            if (tinymce.activeEditor) {
+                let win = tinymce.activeEditor.getWin();
+                if (win && win.MathJax && win.MathJax.typesetPromise) {
+                    win.MathJax.typesetPromise();
+                }
+            }
+        }
+
+        // 🔧 ГЕНЕРАТОР HTML ИЗ JSON
+        window.buildLabFromJSON = function(data, mode) {
+            let editor = tinymce.activeEditor;
+            if (!editor) return;
+            
+            let html = '';
+            
+            // Если перезапись, добавляем шапку
+            if (mode === 'overwrite') {
+                if (data.title) html += `<h1 style="text-align: center;">${data.title}</h1>`;
+                if (data.goal) html += `<p><strong>Цель работы:</strong> ${data.goal}</p><p>&nbsp;</p><h3>1. Практическая часть</h3>`;
+            }
+            
+            // Строим карусель
+            if (data.steps && data.steps.length > 0) {
+                let carouselId = 'carousel_' + new Date().getTime();
+                html += `
+                    <div class="lab-carousel" id="${carouselId}" data-active="1" contenteditable="false">
+                        <span class="btn-delete-carousel" contenteditable="false" title="Удалить полностью">Удалить полностью 🗑️</span>
+                        <div class="lab-slides-container">`;
+                
+                data.steps.forEach((step, idx) => {
+                    let display = (idx === 0) ? 'block' : 'none';
+                    let activeClass = (idx === 0) ? 'active' : '';
+                    let title = step.title || `Действие ${idx + 1}`;
+                    let desc = step.desc || 'Опишите выполняемые действия...';
+                    
+                    html += `
+                        <div class="lab-slide ${activeClass}" style="display: ${display};">
+                            <h3 class="step-title" contenteditable="true">${title}</h3>
+                            <div class="step-image-container" contenteditable="true" title="Нажмите, чтобы выбрать элемент, или перетащите схему сюда"><br data-mce-bogus="1"></div>
+                            <div class="step-desc-container" contenteditable="true">
+                                <p class="step-description">${desc}</p>
+                            </div>
+                        </div>`;
+                });
+                
+                html += `
+                        </div>
+                        <div class="step-footer" contenteditable="false"></div>
+                    </div><p>&nbsp;</p>`;
+            }
+            
+            // Вставляем результат в редактор
+            if (mode === 'overwrite') {
+                editor.setContent(html);
+            } else {
+                editor.insertContent(html);
+            }
+            
+            if (window.syncAllCarousels) window.syncAllCarousels();
+            editor.undoManager.add();
+        };
+
+        tinymce.init({
+            selector: '#editor', 
+            license_key: 'gpl', 
+            height: '100%', 
+            menubar: false, 
+            statusbar: true,
+            plugins: 'advlist autolink lists link image charmap preview anchor searchreplace visualblocks code insertdatetime media table code help wordcount quickbars nonbreaking',
+            nonbreaking_force_tab: true, 
+            
+            // 🔧 ДОБАВЛЕНО: Кнопка 'table' и восстановлены стили текста
+            toolbar: 'add_step add_formula | undo redo | fontfamily fontsizeinput | bold italic underline strikethrough | forecolor backcolor | alignleft aligncenter alignright alignjustify | bullist numlist outdent indent lineheight | table',
+            contextmenu: 'add_step_item | add_formula_item | copy paste | bold italic underline | alignleft aligncenter alignright',
+            
+            quickbars_insert_toolbar: false, 
+            quickbars_selection_toolbar: 'link | bold italic underline | forecolor backcolor | fontfamily fontsizeinput',
+            quickbars_image_toolbar: false, 
+            
+            extended_valid_elements: 'svg[style|width|height|xmlns|class|viewBox],line[style|x1|y1|x2|y2|stroke|stroke-width|stroke-linecap|class|id|opacity|stroke-dasharray],circle[style|cx|cy|r|fill|class|id|data-target],img[src|alt|class|style|width|height]',
+            toolbar_mode: 'wrap', branding: false, promotion: false,
+
+            content_style: `
+                @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+                html { background-color: transparent; }
+                
+                body { width: 794px; min-height: 1123px; padding: 2cm 2cm 2cm 3cm !important; margin: 30px auto !important; box-shadow: 0 8px 24px rgba(0,0,0,0.06); border-radius: 8px; font-family: "Times New Roman", Times, serif; font-size: 12pt; line-height: 1.6; color: #1a1a1a; box-sizing: border-box; background-color: #ffffff; transition: background-color 0.3s, color 0.3s, box-shadow 0.3s; }
+                
+                .lab-carousel { position: relative; border: 1px solid #d0d7de; border-radius: 12px; padding: 20px; margin: 25px 0; background-color: #f8fafc; box-shadow: 0 2px 8px rgba(0,0,0,0.02); transition: border-color 0.3s; z-index: 1;}
+                .lab-carousel:hover { border-color: #aebfd1; }
+                .lab-slide { position: relative; animation: fadeIn 0.3s ease-in-out; z-index: 10; }
+                @keyframes fadeIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
+                
+                .btn-delete-carousel { position: absolute; top: 12px; right: 12px; background: #ffebee; color: #d32f2f; border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; opacity: 0; transition: 0.2s; font-family: 'Inter', sans-serif; font-weight: 600; z-index: 100; pointer-events: auto; }
+                .btn-delete-carousel:hover { background: #ffcdd2; color: #b71c1c; }
+                .lab-carousel:hover .btn-delete-carousel { opacity: 1; }
+                
+                .step-title { margin-top: 0; margin-bottom: 15px; color: #005fb8; font-size: 15pt; font-family: 'Inter', sans-serif; padding-right: 160px; outline: 1px solid transparent; position: relative; z-index: 20;}
+                .step-title:focus { outline: 1px dashed #d0d7de; border-radius: 4px; }
+                .step-title img { display: none !important; }
+                
+                .step-image-container { position: relative; min-height: 150px; text-align: center; outline: 1px solid transparent; transition: border-color 0.2s, background-color 0.2s, outline-color 0.2s; margin-bottom: 15px; border: 2px dashed #d0d7de; background-color: #ffffff; padding: 40px 10px; border-radius: 8px; cursor: default; overflow: hidden; z-index: 20; resize: vertical; }
+                .step-image-container:focus { outline: 2px solid #005fb8; }
+                .step-image-container:hover { border-color: #005fb8; }
+                .step-image-container:not(:has(img))::before { content: '[ Нажмите, чтобы выбрать схему, или перетащите её сюда ]'; color: #888; font-size: 14px; pointer-events: none; cursor: pointer; }
+                .step-image-container:has(img) { border-color: transparent !important; background-color: transparent !important; padding: 10px 0; }
+                
+                .base-bg { position: relative; z-index: 1; max-width: 100%; pointer-events: auto; }
+                .dropped-component { position: absolute; z-index: 5; cursor: move; pointer-events: auto; }
+                
+                body.wire-mode .step-image-container { cursor: crosshair; }
+                body.wire-mode .base-bg { pointer-events: none; }
+                body.wire-mode .dropped-component { pointer-events: none; }
+                body.wire-mode .wire-canvas { pointer-events: auto !important; }
+                .wire-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+                .circuit-wire { cursor: pointer; transition: stroke-width 0.2s; pointer-events: auto; }
+                .circuit-wire:hover { stroke-width: 10 !important; }
+                .wire-node { cursor: move; pointer-events: auto; }
+                .wire-node:hover { r: 8; opacity: 0.8; }
+
+                .step-desc-container { min-height: 30px; outline: 1px solid transparent; transition: 0.2s; position: relative; z-index: 20;}
+                .step-desc-container:focus { outline: 1px dashed #d0d7de; border-radius: 4px; }
+                .step-description { margin: 0; }
+                .step-desc-container img { display: none !important; }
+
+                .step-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 20px; -webkit-user-select: none; user-select: none; position: relative; z-index: 1000; pointer-events: auto;}
+                .footer-left { position: relative; z-index: 1001; pointer-events: auto; }
+                .btn-use-prev-bg { pointer-events: auto; z-index: 1002; position: relative; }
+                
+                .btn-toggle-ghost { font-size: 11px; padding: 4px 8px; border-radius: 4px; cursor: pointer; background: #e1e4e8; color: #5c6c7c; user-select: none; transition: 0.2s; pointer-events: auto; }
+                .btn-toggle-ghost:hover { background: #d0d7de; }
+                .btn-toggle-ghost.active { background: #005fb8; color: #fff; }
+                
+                .pagination-wrapper { display: flex; align-items: center; gap: 8px; flex-shrink: 0;}
+                .step-pagination-window { display: flex; overflow: hidden; max-width: 118px; scroll-behavior: smooth; border-radius: 6px; flex-shrink: 0; pointer-events: auto;}
+                .step-pagination-track { display: flex; gap: 8px; width: max-content; align-items: center; pointer-events: auto;}
+                
+                .step-btn-wrapper { position: relative; display: flex; width: 34px; height: 34px; z-index: 1002; flex-shrink: 0;}
+                .btn-delete-slide { position: absolute; top: -6px; right: -6px; background: #ff4c4c; color: white; font-size: 10px; width: 16px; height: 16px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.2); z-index: 1005; font-family: sans-serif; pointer-events: auto;}
+                .step-btn-wrapper:hover .btn-delete-slide { opacity: 1; transform: scale(1.1); }
+                .btn-delete-slide:hover { background: #d32f2f; }
+
+                .step-btn { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background-color: #e1e4e8; color: #5c6c7c; border-radius: 6px; font-size: 14px; font-family: 'Inter', sans-serif; font-weight: 600; cursor: pointer; transition: 0.2s; z-index: 1002; pointer-events: auto; flex-shrink: 0;}
+                .step-btn:hover { background-color: #d0d7de; }
+                .step-btn-active { background-color: #005fb8; color: #ffffff; }
+                .step-btn-active:hover { background-color: #004c99; }
+                .step-btn-add { background-color: #ff9800; color: #ffffff; font-size: 20px; border-radius: 6px; font-family: 'Inter', sans-serif; display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; cursor: pointer; transition: 0.2s; pointer-events: auto; flex-shrink: 0;}
+                .step-btn-add:hover { background-color: #e68a00; }
+
+                .step-btn[draggable="true"], .step-btn-wrapper[draggable="true"] { cursor: grab; }
+                .step-btn[draggable="true"]:active, .step-btn-wrapper[draggable="true"]:active { cursor: grabbing; }
+
+                /* ТЕМНАЯ ТЕМА ВНУТРИ РЕДАКТОРА */
+                body.dark-mode { background-color: #1e1e1e !important; color: #d4d4d4 !important; box-shadow: 0 8px 24px rgba(0,0,0,0.4); border: 1px solid #333;}
+                body.dark-mode .lab-carousel { background-color: #252526 !important; border-color: #333 !important; }
+                body.dark-mode .lab-carousel:hover { border-color: #444 !important; }
+                body.dark-mode .step-title { color: #4daafc !important; }
+                body.dark-mode .step-image-container { border-color: #444; background-color: #1e1e1e;}
+                body.dark-mode .step-image-container:hover { border-color: #4daafc; background-color: #2a2a2d; }
+                body.dark-mode .btn-delete-carousel { background: #3b1c1c; color: #ff6b6b; border: 1px solid #ff6b6b;}
+                body.dark-mode .btn-delete-carousel:hover { background: #4a1c1c; }
+                body.dark-mode .btn-delete-slide { background: #d32f2f; }
+                body.dark-mode .btn-delete-slide:hover { background: #b71c1c; }
+                body.dark-mode .step-btn { background-color: #333333; color: #cccccc; }
+                body.dark-mode .step-btn:hover { background-color: #444444; }
+                body.dark-mode .step-btn-active { background-color: #4daafc; color: #1e1e1e; }
+                body.dark-mode .step-btn-add { background-color: #ff9800; color: #1e1e1e; }
+                body.dark-mode .btn-toggle-ghost { background: #333333; color: #cccccc; }
+                body.dark-mode .btn-toggle-ghost:hover { background: #444444; }
+                body.dark-mode .btn-toggle-ghost.active { background: #4daafc; color: #1e1e1e; }
+            `,
+
+            paste_preprocess: function(plugin, args) {
+                var node = tinymce.activeEditor.selection.getNode();
+                if (node.closest('.lab-carousel')) {
+                    var temp = document.createElement('div');
+                    temp.innerHTML = args.content;
+                    var nestedCarousels = temp.querySelectorAll('.lab-carousel');
+                    nestedCarousels.forEach(function(n) { n.remove(); });
+                    var nestedFooters = temp.querySelectorAll('.step-footer');
+                    nestedFooters.forEach(function(n) { n.remove(); });
+                    args.content = temp.innerHTML;
+                }
+            },
+
+            setup: function (editor) {
+                editor.ui.registry.addButton('add_formula', {
+                    text: 'f(x)',
+                    tooltip: 'Вставить математическую формулу LaTeX',
+                    onAction: function() {
+                        console.log("SMARTLAB_ACTION:open_formula_editor");
+                    }
+                });
+
+                editor.ui.registry.addMenuItem('add_formula_item', {
+                    text: 'Математическая формула',
+                    icon: 'formula',
+                    onAction: function() {
+                        console.log("SMARTLAB_ACTION:open_formula_editor");
+                    }
+                });
+
+                function insertNewStep() {
+                    var html = `
+                        <div class="lab-carousel" data-active="1" contenteditable="false">
+                            <span class="btn-delete-carousel" contenteditable="false" title="Удалить полностью">Удалить полностью 🗑️</span>
+                            <div class="lab-slides-container">
+                                <div class="lab-slide active" style="display: block;">
+                                    <h3 class="step-title" contenteditable="true">Действие 1</h3>
+                                    <div class="step-image-container" contenteditable="true" title="Нажмите, чтобы выбрать элемент, или перетащите схему сюда"><br data-mce-bogus="1"></div>
+                                    <div class="step-desc-container" contenteditable="true">
+                                        <p class="step-description">Опишите выполняемые действия...</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="step-footer" contenteditable="false"></div>
+                        </div>`;
+                    
+                    var currentNode = editor.selection.getNode();
+                    var insideCarousel = currentNode.closest('.lab-carousel');
+                    
+                    if (insideCarousel) {
+                        var temp = document.createElement('div');
+                        temp.innerHTML = html + '<p><br data-mce-bogus="1"></p>';
+                        while (temp.firstChild) {
+                            insideCarousel.parentNode.insertBefore(temp.firstChild, insideCarousel.nextSibling);
+                        }
+                    } else {
+                        editor.insertContent(html + '<p><br data-mce-bogus="1"></p>');
+                    }
+                    if(window.syncAllCarousels) window.syncAllCarousels();
+                    editor.undoManager.add();
+                }
+
+                editor.ui.registry.addButton('add_step', { text: '➕ ДОБАВИТЬ ШАГ', tooltip: 'Вставить независимый блок-карусель', onAction: insertNewStep });
+                editor.ui.registry.addMenuItem('add_step_item', { text: '➕ Добавить шаг', icon: 'plus', onAction: insertNewStep });
+
+                window.currentTool = null;
+                let draggedNode = null; let draggedImage = null; let imgOffsetX = 0; let imgOffsetY = 0;
+                let isDrawing = false; let activeSvg = null; let ghostLine = null;
+
+                window.setTool = function(tool) {
+                    window.currentTool = tool;
+                    if(tool === 'wire') tinymce.activeEditor.getBody().classList.add('wire-mode');
+                    else tinymce.activeEditor.getBody().classList.remove('wire-mode');
+                };
+
+                function getOrCreateSvg(container) {
+                    let svg = container.querySelector('svg.wire-canvas');
+                    if (!svg) {
+                        let doc = container.ownerDocument;
+                        svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                        svg.setAttribute('class', 'wire-canvas');
+                        svg.setAttribute('style', 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10;');
+                        container.appendChild(svg);
+                    }
+                    return svg;
+                }
+
+                editor.on('init', function() {
+                    let doc = editor.getDoc();
+                    if(doc) {
+                        let scriptConfig = doc.createElement('script');
+                        scriptConfig.type = 'text/javascript';
+                        scriptConfig.text = "window.MathJax = { tex: { inlineMath: [['\\\\(', '\\\\)']], displayMath: [['$$', '$$']] }, svg: { fontCache: 'global' } };";
+                        doc.head.appendChild(scriptConfig);
+
+                        let scriptMathJax = doc.createElement('script');
+                        scriptMathJax.type = 'text/javascript';
+                        scriptMathJax.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js';
+                        doc.head.appendChild(scriptMathJax);
+
+                        let draggedIdx = null;
+
+                        doc.addEventListener('dragstart', function(e) {
+                            var btn = e.target.closest('.step-btn, .step-btn-wrapper');
+                            if (btn && btn.getAttribute('data-idx')) {
+                                draggedIdx = parseInt(btn.getAttribute('data-idx'));
+                                e.dataTransfer.effectAllowed = 'move';
+                                e.dataTransfer.setData('text/plain', draggedIdx);
+                                setTimeout(() => { btn.style.opacity = '0.4'; }, 0);
+                            }
+                        });
+
+                        doc.addEventListener('dragend', function(e) {
+                            var btn = e.target.closest('.step-btn, .step-btn-wrapper');
+                            if (btn) btn.style.opacity = '1';
+                            draggedIdx = null;
+                            doc.querySelectorAll('.step-btn, .step-btn-wrapper').forEach(el => {
+                                el.style.borderLeft = ''; el.style.borderRight = '';
+                            });
+                        });
+
+                        doc.addEventListener('dragover', function(e) {
+                            if (!draggedIdx) return;
+                            var btn = e.target.closest('.step-btn, .step-btn-wrapper');
+                            if (btn && btn.getAttribute('data-idx')) {
+                                e.preventDefault(); 
+                                let targetIdx = parseInt(btn.getAttribute('data-idx'));
+                                if (targetIdx !== draggedIdx) {
+                                    let rect = btn.getBoundingClientRect(); let mid = rect.left + rect.width / 2;
+                                    doc.querySelectorAll('.step-btn, .step-btn-wrapper').forEach(el => { el.style.borderLeft = ''; el.style.borderRight = ''; });
+                                    if (e.clientX < mid) btn.style.borderLeft = '3px solid #ff9800';
+                                    else btn.style.borderRight = '3px solid #ff9800';
+                                }
+                            }
+                        });
+
+                        doc.addEventListener('drop', function(e) {
+                            if (!draggedIdx) return;
+                            e.preventDefault(); e.stopPropagation();
+                            var btn = e.target.closest('.step-btn, .step-btn-wrapper');
+                            if (btn && btn.getAttribute('data-idx')) {
+                                let targetIdx = parseInt(btn.getAttribute('data-idx'));
+                                if (targetIdx !== draggedIdx) {
+                                    let carousel = btn.closest('.lab-carousel');
+                                    let slidesContainer = carousel.querySelector('.lab-slides-container');
+                                    let slides = Array.from(slidesContainer.children).filter(c => c.classList.contains('lab-slide'));
+                                    
+                                    let rect = btn.getBoundingClientRect(); let mid = rect.left + rect.width / 2;
+                                    let insertAfter = e.clientX > mid;
+
+                                    let draggedSlide = slides[draggedIdx - 1]; let targetSlide = slides[targetIdx - 1];
+
+                                    if (draggedSlide && targetSlide) {
+                                        if (insertAfter) slidesContainer.insertBefore(draggedSlide, targetSlide.nextSibling);
+                                        else slidesContainer.insertBefore(draggedSlide, targetSlide);
+
+                                        let newSlides = Array.from(slidesContainer.children).filter(c => c.classList.contains('lab-slide'));
+                                        newSlides.forEach((slide, index) => {
+                                            let title = slide.querySelector('.step-title');
+                                            if (title && title.innerText.trim().startsWith('Действие')) { title.innerText = 'Действие ' + (index + 1); }
+                                        });
+
+                                        let newActiveIdx = newSlides.indexOf(draggedSlide) + 1;
+                                        carousel.setAttribute('data-active', newActiveIdx);
+
+                                        let footer = carousel.querySelector('.step-footer');
+                                        if (footer) { footer.removeAttribute('data-last-t'); footer.removeAttribute('data-last-n'); }
+                                        if (window.syncAllCarousels) window.syncAllCarousels();
+                                        editor.undoManager.add();
+                                    }
+                                }
+                            }
+                            draggedIdx = null;
+                            doc.querySelectorAll('.step-btn, .step-btn-wrapper').forEach(el => { el.style.borderLeft = ''; el.style.borderRight = ''; });
+                        });
+
+                        doc.addEventListener('contextmenu', function(e) {
+                            if (e.target.tagName && e.target.tagName.toLowerCase() === 'line' && e.target.classList.contains('circuit-wire')) {
+                                e.preventDefault(); e.stopPropagation();
+                                let w = e.target.getAttribute('stroke-width') || '6';
+                                let o = e.target.getAttribute('opacity') || '1';
+                                let c = e.target.getAttribute('stroke') || '#000000';
+                                console.log('SMARTLAB_ACTION:edit_wire:' + e.target.id + ':' + w + ':' + o + ':' + c);
+                                setTimeout(() => { let toxMenu = document.querySelector('.tox-menu'); if(toxMenu) toxMenu.style.display = 'none'; }, 10);
+                            }
+                        }, true);
+
+                        doc.addEventListener('mousedown', function(e) {
+                            var btn = e.target.closest('.step-btn, .btn-delete-slide, .btn-delete-carousel, .btn-use-prev-bg, .btn-toggle-ghost');
+                            if (btn) { e.stopPropagation(); } 
+                        }, true);
+
+                        doc.addEventListener('click', function(e) {
+                            var btnDeleteCarousel = e.target.closest('.btn-delete-carousel');
+                            if (btnDeleteCarousel) {
+                                e.preventDefault(); e.stopPropagation();
+                                var carousel = btnDeleteCarousel.closest('.lab-carousel'); 
+                                if (!carousel.id) carousel.id = 'carousel_' + new Date().getTime();
+                                console.log('SMARTLAB_ACTION:delete_step:' + carousel.id); 
+                                return;
+                            }
+
+                            var btnDeleteSlide = e.target.closest('.btn-delete-slide');
+                            if (btnDeleteSlide) {
+                                e.preventDefault(); e.stopPropagation();
+                                var carousel = btnDeleteSlide.closest('.lab-carousel'); 
+                                var slidesContainer = carousel.querySelector('.lab-slides-container');
+                                if (!slidesContainer) return;
+                                var slides = Array.from(slidesContainer.children).filter(c => c.classList.contains('lab-slide'));
+                                if(slides.length === 1) { 
+                                    console.log('SMARTLAB_ACTION:alert:Нельзя удалить единственное действие. Нажмите «Удалить полностью» сверху.'); 
+                                    return; 
+                                }
+                                var activeIdx = parseInt(carousel.getAttribute('data-active')) || 1; 
+                                if (!carousel.id) carousel.id = 'carousel_' + new Date().getTime();
+                                console.log('SMARTLAB_ACTION:delete_slide:' + carousel.id + ':' + activeIdx); 
+                                return;
+                            }
+
+                            let toggleComps = e.target.closest('.btn-toggle-ghost-comps');
+                            if (toggleComps) {
+                                e.preventDefault(); e.stopPropagation();
+                                let carousel = toggleComps.closest('.lab-carousel');
+                                let activeIdx = parseInt(carousel.getAttribute('data-active')) || 1;
+                                let slidesContainer = carousel.querySelector('.lab-slides-container');
+                                let slide = slidesContainer.children[activeIdx - 1];
+                                if (slide) {
+                                    let show = slide.getAttribute('data-show-comps') !== 'false';
+                                    slide.setAttribute('data-show-comps', show ? 'false' : 'true'); 
+                                    let wrapper = slide.querySelector('.ghost-comps-wrapper');
+                                    if (wrapper) wrapper.style.display = show ? 'none' : 'block';
+                                    
+                                    let footer = carousel.querySelector('.step-footer');
+                                    if (footer) footer.removeAttribute('data-last-t'); 
+                                    syncAllCarousels();
+                                    editor.undoManager.add();
+                                }
+                                return;
+                            }
+
+                            let toggleWires = e.target.closest('.btn-toggle-ghost-wires');
+                            if (toggleWires) {
+                                e.preventDefault(); e.stopPropagation();
+                                let carousel = toggleWires.closest('.lab-carousel');
+                                let activeIdx = parseInt(carousel.getAttribute('data-active')) || 1;
+                                let slidesContainer = carousel.querySelector('.lab-slides-container');
+                                let slide = slidesContainer.children[activeIdx - 1];
+                                if (slide) {
+                                    let show = slide.getAttribute('data-show-wires') !== 'false';
+                                    slide.setAttribute('data-show-wires', show ? 'false' : 'true'); 
+                                    let wrapper = slide.querySelector('.ghost-wires-wrapper');
+                                    if (wrapper) wrapper.style.display = show ? 'none' : 'block';
+                                    
+                                    let footer = carousel.querySelector('.step-footer');
+                                    if (footer) footer.removeAttribute('data-last-t'); 
+                                    syncAllCarousels();
+                                    editor.undoManager.add();
+                                }
+                                return;
+                            }
+
+                            if (e.target.classList.contains('btn-use-prev-bg')) {
+                                e.preventDefault(); e.stopPropagation();
+                                let carousel = e.target.closest('.lab-carousel');
+                                let activeIdx = parseInt(carousel.getAttribute('data-active')) || 1;
+                                let slidesContainer = carousel.querySelector('.lab-slides-container');
+                                if (!slidesContainer) return;
+                                
+                                let slide = slidesContainer.children[activeIdx - 1];
+                                let prevSlide = slidesContainer.children[activeIdx - 2];
+                                
+                                let currentImgContainer = slide.querySelector('.step-image-container');
+                                let prevImgContainer = prevSlide ? prevSlide.querySelector('.step-image-container') : null;
+
+                                if (prevImgContainer) {
+                                    let bg = prevImgContainer.querySelector('img.base-bg');
+                                    if (bg) {
+                                        currentImgContainer.innerHTML = '';
+                                        currentImgContainer.appendChild(bg.cloneNode(true));
+                                        
+                                        let showComps = slide.getAttribute('data-show-comps') !== 'false';
+                                        let showWires = slide.getAttribute('data-show-wires') !== 'false';
+                                        
+                                        let ghostComps = currentImgContainer.ownerDocument.createElement('div');
+                                        ghostComps.className = 'ghost-comps-wrapper';
+                                        ghostComps.style.position = 'absolute'; ghostComps.style.top = '0'; ghostComps.style.left = '0';
+                                        ghostComps.style.width = '100%'; ghostComps.style.height = '100%';
+                                        ghostComps.style.pointerEvents = 'none'; ghostComps.style.zIndex = '2';
+                                        ghostComps.style.display = showComps ? 'block' : 'none';
+                                        ghostComps.contentEditable = "false";
+                                        
+                                        prevImgContainer.querySelectorAll('img.dropped-component').forEach(img => {
+                                            let clone = img.cloneNode(true);
+                                            clone.classList.remove('dropped-component');
+                                            clone.style.opacity = '0.3';
+                                            clone.style.filter = 'grayscale(100%)';
+                                            clone.style.pointerEvents = 'none';
+                                            ghostComps.appendChild(clone);
+                                        });
+                                        currentImgContainer.appendChild(ghostComps);
+                                        
+                                        let ghostWires = currentImgContainer.ownerDocument.createElement('div');
+                                        ghostWires.className = 'ghost-wires-wrapper';
+                                        ghostWires.style.position = 'absolute'; ghostWires.style.top = '0'; ghostWires.style.left = '0';
+                                        ghostWires.style.width = '100%'; ghostWires.style.height = '100%';
+                                        ghostWires.style.pointerEvents = 'none'; ghostWires.style.zIndex = '3';
+                                        ghostWires.style.display = showWires ? 'block' : 'none';
+                                        ghostWires.contentEditable = "false";
+                                        
+                                        prevImgContainer.querySelectorAll('svg.wire-canvas').forEach(svg => {
+                                            let cloneSvg = svg.cloneNode(true);
+                                            cloneSvg.classList.remove('wire-canvas');
+                                            cloneSvg.style.opacity = '0.4';
+                                            cloneSvg.style.pointerEvents = 'none';
+                                            cloneSvg.querySelectorAll('*').forEach(el => {
+                                                el.removeAttribute('id');
+                                                el.removeAttribute('data-target');
+                                                el.removeAttribute('class');
+                                            });
+                                            ghostWires.appendChild(cloneSvg);
+                                        });
+                                        currentImgContainer.appendChild(ghostWires);
+                                        
+                                        let newSvg = currentImgContainer.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                                        newSvg.setAttribute('class', 'wire-canvas');
+                                        newSvg.setAttribute('style', 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10;');
+                                        currentImgContainer.appendChild(newSvg);
+
+                                        editor.undoManager.add();
+                                    } else {
+                                        console.log('SMARTLAB_ACTION:alert:В предыдущем действии нет схемы для копирования!');
+                                    }
+                                }
+                                return;
+                            }
+
+                            var btn = e.target.closest('.step-btn'); 
+                            if (btn) {
+                                e.preventDefault(); e.stopPropagation();
+                                var carousel = btn.closest('.lab-carousel'); if (!carousel) return; 
+                                var slidesContainer = carousel.querySelector('.lab-slides-container');
+                                if (!slidesContainer) return;
+                                var slides = Array.from(slidesContainer.children).filter(c => c.classList.contains('lab-slide'));
+
+                                if (btn.classList.contains('step-btn-add')) {
+                                    var newIdx = slides.length + 1; 
+                                    slides.forEach(s => { s.style.display = 'none'; s.classList.remove('active'); });
+                                    var newSlide = editor.dom.create('div', {class: 'lab-slide active', style: 'display: block;'});
+                                    newSlide.innerHTML = `<h3 class="step-title" contenteditable="true">Действие ${newIdx}</h3><div class="step-image-container" contenteditable="true" title="Нажмите, чтобы выбрать элемент, или перетащите схему сюда"><br data-mce-bogus="1"></div><div class="step-desc-container" contenteditable="true"><p class="step-description">Опишите выполняемые действия...</p></div>`;
+                                    slidesContainer.appendChild(newSlide); 
+                                    carousel.setAttribute('data-active', newIdx); 
+                                    
+                                    let footer = carousel.querySelector('.step-footer');
+                                    if (footer) { footer.removeAttribute('data-last-t'); footer.removeAttribute('data-last-n'); }
+                                    
+                                    syncAllCarousels(); 
+                                    setTimeout(() => { tinymce.activeEditor.selection.select(newSlide.querySelector('.step-title')); tinymce.activeEditor.selection.collapse(true); }, 10);
+                                    editor.undoManager.add();
+                                } else {
+                                    var targetIdx = parseInt(btn.getAttribute('data-idx')); 
+                                    slides.forEach((s, i) => { 
+                                        if (i + 1 === targetIdx) { 
+                                            s.style.display = 'block'; s.classList.add('active'); 
+                                            setTimeout(() => { tinymce.activeEditor.selection.select(s.querySelector('.step-title')); tinymce.activeEditor.selection.collapse(true); }, 10);
+                                        } else { 
+                                            s.style.display = 'none'; s.classList.remove('active'); 
+                                        } 
+                                    });
+                                    carousel.setAttribute('data-active', targetIdx); 
+                                    
+                                    let footer = carousel.querySelector('.step-footer');
+                                    if (footer) { footer.removeAttribute('data-last-t'); footer.removeAttribute('data-last-n'); }
+                                    
+                                    syncAllCarousels();
+                                }
+                                return;
+                            }
+
+                            var imgContainer = e.target.closest('.step-image-container');
+                            if (imgContainer && !imgContainer.querySelector('img')) {
+                                e.preventDefault(); e.stopPropagation();
+                                console.log('SMARTLAB_ACTION:placeholder_click');
+                                return;
+                            }
+                        }, true);
+                    }
+
+                    if(document.body.classList.contains('dark-app')){
+                        editor.dom.addClass(editor.getBody(),'dark-mode'); 
+                        editor.dom.addClass(editor.getDoc().documentElement,'dark-mode');
+                    }
+                });
+
+                editor.on('drop paste', function(e) {
+                    setTimeout(function() {
+                        var node = editor.selection.getNode();
+                        var container = node.closest('.step-image-container');
+                        if (container) {
+                            var imgs = container.querySelectorAll('img');
+                            imgs.forEach(function(img) {
+                                if (!img.classList.contains('base-bg') && !img.classList.contains('dropped-component')) {
+                                    if (!container.querySelector('.base-bg')) {
+                                        img.classList.add('base-bg');
+                                        img.style.position = 'relative'; img.style.maxWidth = '100%'; img.style.height = 'auto'; img.style.zIndex = '1'; img.style.display = 'block'; img.style.margin = '0 auto';
+                                    } else {
+                                        img.classList.add('dropped-component');
+                                        img.style.position = 'absolute'; img.style.width = '60px'; img.style.height = 'auto'; img.style.zIndex = '5'; img.style.cursor = 'move'; img.style.left = '50%'; img.style.top = '50%'; img.style.transform = 'translate(-50%, -50%)';
+                                    }
+                                }
+                            });
+                            editor.undoManager.add();
+                        }
+                    }, 50); 
+                });
+
+                editor.on('mousedown', function(e) {
+                    if (e.target.tagName && e.target.tagName.toLowerCase() === 'circle' && e.target.classList.contains('wire-node')) {
+                        draggedNode = e.target; activeSvg = e.target.closest('svg'); e.preventDefault(); return;
+                    }
+                    if (e.target.tagName && e.target.tagName.toLowerCase() === 'img' && e.target.classList.contains('dropped-component') && window.currentTool !== 'wire') {
+                        draggedImage = e.target; let rect = draggedImage.getBoundingClientRect(); let containerRect = draggedImage.closest('.step-image-container').getBoundingClientRect();
+                        draggedImage.style.transform = 'none'; draggedImage.style.left = (rect.left - containerRect.left) + 'px'; draggedImage.style.top = (rect.top - containerRect.top) + 'px';
+                        imgOffsetX = e.clientX - rect.left; imgOffsetY = e.clientY - rect.top; e.preventDefault(); return;
+                    }
+                    if(window.currentTool === 'wire' && e.target.closest('.step-image-container')) {
+                        let container = e.target.closest('.step-image-container'); 
+                        if (!container.querySelector('img')) {
+                             console.log('SMARTLAB_ACTION:alert:Для рисования проводов нужна схема!');
+                             return;
+                        }
+                        activeSvg = getOrCreateSvg(container); let rect = activeSvg.getBoundingClientRect(); let startX = e.clientX - rect.left; let startY = e.clientY - rect.top;
+                        isDrawing = true; 
+                        let doc = container.ownerDocument;
+                        ghostLine = doc.createElementNS('http://www.w3.org/2000/svg', 'line');
+                        ghostLine.setAttribute('x1', startX); ghostLine.setAttribute('y1', startY); ghostLine.setAttribute('x2', startX); ghostLine.setAttribute('y2', startY);
+                        ghostLine.setAttribute('stroke', '#005fb8'); ghostLine.setAttribute('stroke-width', '6'); ghostLine.setAttribute('stroke-dasharray', '5,5'); ghostLine.setAttribute('stroke-linecap', 'round'); ghostLine.setAttribute('class', 'ghost-wire');
+                        activeSvg.appendChild(ghostLine); e.preventDefault();
+                    }
+                });
+
+                editor.on('mousemove', function(e) {
+                    if (draggedNode && activeSvg) {
+                        let rect = activeSvg.getBoundingClientRect(); let currX = e.clientX - rect.left; let currY = e.clientY - rect.top;
+                        draggedNode.setAttribute('cx', currX); draggedNode.setAttribute('cy', currY);
+                        let wireId = draggedNode.getAttribute('data-target'); let isStart = draggedNode.classList.contains('node-start'); let wire = activeSvg.querySelector('#' + wireId);
+                        if(wire) { if (isStart) { wire.setAttribute('x1', currX); wire.setAttribute('y1', currY); } else { wire.setAttribute('x2', currX); wire.setAttribute('y2', currY); } } return;
+                    }
+                    if (draggedImage) {
+                        let container = draggedImage.closest('.step-image-container'); let contRect = container.getBoundingClientRect();
+                        let x = e.clientX - contRect.left - imgOffsetX; let y = e.clientY - contRect.top - imgOffsetY;
+                        draggedImage.style.left = x + 'px'; draggedImage.style.top = y + 'px'; return;
+                    }
+                    if(isDrawing && ghostLine && activeSvg) {
+                        let rect = activeSvg.getBoundingClientRect(); let currX = e.clientX - rect.left; let currY = e.clientY - rect.top;
+                        ghostLine.setAttribute('x2', currX); ghostLine.setAttribute('y2', currY);
+                    }
+                });
+
+                editor.on('mouseup', function(e) {
+                    if (draggedNode) { draggedNode = null; activeSvg = null; editor.undoManager.add(); return; }
+                    if (draggedImage) { draggedImage = null; editor.undoManager.add(); return; }
+                    if(isDrawing && ghostLine && activeSvg) {
+                        let x1 = ghostLine.getAttribute('x1'); let y1 = ghostLine.getAttribute('y1'); let x2 = ghostLine.getAttribute('x2'); let y2 = ghostLine.getAttribute('y2');
+                        if (ghostLine.parentNode) ghostLine.parentNode.removeChild(ghostLine);
+                        if(Math.abs(x1-x2) > 5 || Math.abs(y1-y2) > 5) {
+                            let doc = activeSvg.ownerDocument;
+                            let wireId = 'wire_' + new Date().getTime();
+                            let line = doc.createElementNS('http://www.w3.org/2000/svg', 'line');
+                            line.setAttribute('x1', x1); line.setAttribute('y1', y1); line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+                            line.setAttribute('stroke', '#000000'); line.setAttribute('stroke-width', '6'); line.setAttribute('stroke-linecap', 'round'); line.setAttribute('opacity', '1'); line.setAttribute('class', 'circuit-wire'); line.setAttribute('id', wireId);
+                            activeSvg.appendChild(line);
+                            let node1 = doc.createElementNS('http://www.w3.org/2000/svg', 'circle'); node1.setAttribute('cx', x1); node1.setAttribute('cy', y1); node1.setAttribute('r', '6'); node1.setAttribute('fill', '#000000'); node1.setAttribute('class', 'wire-node node-start'); node1.setAttribute('data-target', wireId);
+                            let node2 = doc.createElementNS('http://www.w3.org/2000/svg', 'circle'); node2.setAttribute('cx', x2); node2.setAttribute('cy', y2); node2.setAttribute('r', '6'); node2.setAttribute('fill', '#000000'); node2.setAttribute('class', 'wire-node node-end'); node2.setAttribute('data-target', wireId);
+                            activeSvg.appendChild(node1); activeSvg.appendChild(node2); editor.undoManager.add();
+                        }
+                        isDrawing = false; ghostLine = null; activeSvg = null;
+                    }
+                });
+
+                window.updateWire = function(wireId, width, opacity, color, deleteFlag) {
+                    let doc = tinymce.activeEditor.getDoc(); let wire = doc.getElementById(wireId); if(!wire) return;
+                    if (deleteFlag) {
+                        let svg = wire.closest('svg'); if (svg) { svg.querySelectorAll('circle[data-target="'+wireId+'"]').forEach(c => c.parentNode.removeChild(c)); } wire.parentNode.removeChild(wire);
+                    } else {
+                        wire.setAttribute('stroke-width', width); wire.setAttribute('opacity', opacity); wire.setAttribute('stroke', color); wire.style.stroke = color;
+                        let svg = wire.closest('svg'); 
+                        if (svg) { svg.querySelectorAll('circle[data-target="'+wireId+'"]').forEach(c => { c.setAttribute('fill', color); c.style.fill = color; }); }
+                    }
+                    tinymce.activeEditor.undoManager.add(); 
+                };
+
+                window.deleteSlide = function(carousel_id, active_idx) {
+                    var carousel = tinymce.activeEditor.dom.get(carousel_id);
+                    if(carousel) {
+                        var slidesContainer = carousel.querySelector('.lab-slides-container');
+                        if (!slidesContainer) return;
+                        var slides = Array.from(slidesContainer.children).filter(c => c.classList.contains('lab-slide'));
+                        var slide = slides[active_idx - 1]; if (slide) slide.parentNode.removeChild(slide);
+                        
+                        var remaining = Array.from(slidesContainer.children).filter(c => c.classList.contains('lab-slide'));
+                        if (remaining.length > 0) {
+                            remaining.forEach(s => { s.style.display = 'none'; s.classList.remove('active'); });
+                            var newActiveIdx = active_idx; if (newActiveIdx > remaining.length) newActiveIdx = remaining.length;
+                            var activeSlide = remaining[newActiveIdx - 1];
+                            activeSlide.style.display = 'block'; activeSlide.classList.add('active'); 
+                            carousel.setAttribute('data-active', newActiveIdx);
+                            setTimeout(() => { tinymce.activeEditor.selection.select(activeSlide.querySelector('.step-title')); tinymce.activeEditor.selection.collapse(true); }, 10);
+                        }
+                    }
+                    if(window.syncAllCarousels) window.syncAllCarousels(); tinymce.activeEditor.undoManager.add();
+                };
+
+                window.deleteStep = function(carousel_id) {
+                    var el = tinymce.activeEditor.dom.get(carousel_id); if (el) el.parentNode.removeChild(el);
+                    if (window.syncAllCarousels) window.syncAllCarousels(); tinymce.activeEditor.undoManager.add();
+                };
+
+                function syncAllCarousels() {
+                    var carousels = editor.dom.select('.lab-carousel');
+                    carousels.forEach(function(carousel) {
+                        var slidesContainer = carousel.querySelector('.lab-slides-container');
+                        var footer = carousel.querySelector('.step-footer'); 
+                        if (!footer || !slidesContainer) return;
+                        
+                        var slides = Array.from(slidesContainer.children).filter(c => c.classList.contains('lab-slide'));
+                        var T = slides.length; if (T === 0) return;
+                        
+                        var activeIdx = parseInt(carousel.getAttribute('data-active')) || 1; 
+                        if (activeIdx > T) activeIdx = T;
+                        var n = activeIdx;
+                        
+                        let lastT = parseInt(footer.getAttribute('data-last-t')) || 0;
+                        let lastN = parseInt(footer.getAttribute('data-last-n')) || 0;
+                        if (lastT === T && lastN === n) return; 
+                        
+                        var html = '<div style="display: block; width: 100%; clear: both;">';
+                        
+                        if (n > 1) {
+                            let slide = slides[activeIdx - 1];
+                            let showComps = slide.getAttribute('data-show-comps') !== 'false';
+                            let showWires = slide.getAttribute('data-show-wires') !== 'false';
+                            
+                            html += `<div class="footer-left" contenteditable="false" style="display: inline-flex; flex-direction: column; gap: 8px; vertical-align: middle;">
+                                        <span class="btn-use-prev-bg" style="font-size: 13px; color: #005fb8; cursor: pointer; text-decoration: underline; font-weight: 600;">Использовать из пред. действия</span>
+                                        <div style="display: flex; gap: 8px;">
+                                            <span class="btn-toggle-ghost-comps btn-toggle-ghost ${showComps ? 'active' : ''}">👁 Детали</span>
+                                            <span class="btn-toggle-ghost-wires btn-toggle-ghost ${showWires ? 'active' : ''}">👁 Провода</span>
+                                        </div>
+                                     </div>`;
+                        } else {
+                            html += '<div class="footer-left" contenteditable="false" style="display: inline-block;"></div>';
+                        }
+
+                        html += '<div class="step-pagination" contenteditable="false" style="display: inline-block; vertical-align: middle; float: right; white-space: nowrap;">';
+                        
+                        let visiblePages = [];
+                        if (T <= 3) {
+                            for (let i = 1; i <= T; i++) visiblePages.push(i);
+                        } else {
+                            if (n === 1) visiblePages = [1, 2, 3];
+                            else if (n === T) visiblePages = [T - 2, T - 1, T];
+                            else visiblePages = [n - 1, n, n + 1];
+                        }
+
+                        visiblePages.forEach(i => {
+                            if (i === n) {
+                                html += `<div class="step-btn-wrapper" draggable="true" data-idx="${i}" contenteditable="false" style="display: inline-block; position: relative; width: 34px; height: 34px; margin-left: 8px; vertical-align: middle;">
+                                            <span class="btn-delete-slide" contenteditable="false" title="Удалить это действие" style="position: absolute; top: -6px; right: -6px; background: #ff4c4c; color: white; font-size: 10px; width: 16px; height: 16px; border-radius: 50%; text-align: center; line-height: 16px; cursor: pointer; z-index: 10; font-family: sans-serif;">✖</span>
+                                            <span class="step-btn step-btn-active" data-idx="${i}" contenteditable="false" style="display: inline-block; width: 34px; height: 34px; line-height: 34px; text-align: center; background-color: #005fb8; color: #fff; border-radius: 6px; font-size: 14px; font-family: sans-serif; font-weight: bold; cursor: grab;">${i}</span>
+                                         </div>`;
+                            } else {
+                                html += `<span class="step-btn" draggable="true" data-idx="${i}" contenteditable="false" style="display: inline-block; width: 34px; height: 34px; line-height: 34px; text-align: center; background-color: #e1e4e8; color: #5c6c7c; border-radius: 6px; font-size: 14px; font-family: sans-serif; font-weight: bold; cursor: grab; margin-left: 8px; vertical-align: middle;">${i}</span>`;
+                            }
+                        });
+
+                        if (n === T) {
+                            html += `<span class="step-btn step-btn-add" contenteditable="false" title="Добавить шаг" style="display: inline-block; width: 34px; height: 34px; line-height: 32px; text-align: center; background-color: #ff9800; color: #fff; border-radius: 6px; font-size: 20px; font-family: sans-serif; font-weight: bold; cursor: pointer; margin-left: 8px; vertical-align: middle;">+</span>`;
+                        }
+                        
+                        html += '</div></div><div style="clear: both;"></div>';
+                        
+                        footer.innerHTML = html;
+                        footer.setAttribute('data-last-t', T);
+                        footer.setAttribute('data-last-n', n);
+                    });
+                }
+                
+                window.syncAllCarousels = syncAllCarousels;
+
+                editor.on('keydown', function(e) {
+                    var node = editor.selection.getNode();
+                    var imgContainer = node.closest('.step-image-container');
+                    if (imgContainer) {
+                        var hasImage = imgContainer.querySelector('img');
+                        if (!hasImage && (e.key === 'Backspace' || e.key === 'Delete')) { e.preventDefault(); return; }
+                        var allowedKeys = ['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
+                        if (!allowedKeys.includes(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                            e.preventDefault();
+                            console.log('SMARTLAB_ACTION:alert:В этой зоне можно размещать только схемы! Для текста используйте блоки выше и ниже.');
+                        }
+                    }
+                });
+
+                // 🔧 ДОБАВЛЕНО Change ДЛЯ АВТОРЕНДЕРА ФОРМУЛ ПРИ ПЕЧАТИ
+                editor.on('NodeChange Change KeyUp', function() { 
+                    refreshMath();
+                    syncAllCarousels(); 
+                });
+            }
+        });
+    </script>
+</body>
+</html>
